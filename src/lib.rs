@@ -23,6 +23,8 @@ static SEGMENTATION_EXCEPTIONS: &[&[&str]] = &[
     &["四十", "分"],
     &["写", "作文"],
     &["得", "很"],
+    &["家", "的"],
+    &["的", "话"],
 ];
 
 pub struct Dictionary {
@@ -233,6 +235,8 @@ impl<'a> Fragment<'a> {
 
     fn push(&mut self, dict: &Dictionary, word: &'a DictEntry<String>) {
         let mut score = dict.frequency(word.simplified());
+        self.words.push(word);
+
         for &exception in SEGMENTATION_EXCEPTIONS {
             let x = self
                 .words
@@ -244,13 +248,12 @@ impl<'a> Fragment<'a> {
                 .collect::<Vec<_>>();
 
             if x == exception {
-                score += 100_f64;
+                score += 100_000_f64;
             }
         }
 
         self.scores.push(score);
         self.len += word.simplified().len();
-        self.words.push(word);
     }
 }
 
@@ -400,23 +403,26 @@ mod tests {
             "为了 照顾 家人 , 我 放弃 了 升职 的 机会",
         );
         assert_segment("我有好多事要干", "我 有 好多 事 要 干");
+
+        assert_segment("我不知道这张表怎么填", "我 不 知道 这 张 表 怎么 填");
+        assert_segment("他今天有很多事情要做", "他 今天 有 很 多 事情 要 做");
+        assert_segment("我不知道他在想什么", "我 不 知道 他 在 想 什么");
+        assert_segment("我是个不顾家的人", "我 是 个 不顾 家 的 人");
+        assert_segment("你真有胆量", "你 真 有胆量");
+        assert_segment("夏天到了", "夏天 到 了");
+        assert_segment("我合上书准备离开", "我 合上 书 准备 离开");
+        assert_segment("他的话", "他 的 话");
+        assert_segment("你用什么方法学习", "你 用 什么 方法 学习");
         /*
         , ("你定时间吧","你 定 时间 吧")
         -- , ("这位子有人吗","这 位子 有人 吗")
 
 
-        , ("我不知道这张表怎么填","我 不 知道 这 张 表 怎么 填")
-        , ("我有很多事要做","我 有 很 多 事 要 做")
-        , ("我不知道他在想什么","我 不 知道 他 在 想 什么")
-        , ("我是个不顾家的人","我 是 个 不顾 家 的 人")
-        , ("你真有胆量","你 真 有胆量")
-        , ("夏天到了", "夏天 到 了")
+
         , ("我先做作业再吃晚饭","我 先 做 作业 再 吃 晚饭")
         , ("现在一点钟了", "现在 一 点钟 了")
 
-        , ("我合上书准备离开", "我 合上 书 准备 离开")
-        , ("他的话","他 的 话")
-        , ("你用什么方法学习","你 用 什么 方法 学习")
+
         , ("AAA","AAA")
         , ("BBB","BBB")
 
