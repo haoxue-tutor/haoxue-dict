@@ -1,5 +1,6 @@
 use cedict::DictEntry;
 use either::Either;
+use once_cell::sync::Lazy;
 use std::{
     collections::{BTreeMap, HashMap},
     io::Cursor,
@@ -26,6 +27,8 @@ static SEGMENTATION_EXCEPTIONS: &[&[&str]] = &[
     &["家", "的"],
     &["的", "话"],
 ];
+
+pub static DICTIONARY: Lazy<Dictionary> = Lazy::new(Dictionary::new);
 
 pub struct Dictionary {
     entries: BTreeMap<String, DictEntry<String>>,
