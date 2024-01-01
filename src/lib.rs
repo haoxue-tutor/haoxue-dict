@@ -1,5 +1,6 @@
 use cedict::DictEntry;
 use either::Either;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -31,7 +32,7 @@ static SEGMENTATION_EXCEPTIONS: &[&[&str]] = &[
 pub static DICTIONARY: Lazy<Dictionary> = Lazy::new(Dictionary::new);
 
 pub struct Dictionary {
-    entries: BTreeMap<String, DictEntry<String>>,
+    entries: BTreeMap<String, Vec<DictEntry<String>>>,
     word_frequency: HashMap<String, f64>,
 }
 
@@ -41,7 +42,9 @@ impl Dictionary {
             entries: cedict::parse_reader(Cursor::new(DEFAULT_DICT))
                 // Filter out non-chinese entries.
                 .filter(|entry| !entry.simplified().chars().all(|c| c.is_ascii()))
-                .map(|entry| (entry.simplified().to_string(), entry))
+                .group_by(|entry| entry.simplified().to_string())
+                .into_iter()
+                .map(|(key, entries)| (key, entries.collect()))
                 .collect(),
             word_frequency: csv::ReaderBuilder::new()
                 .delimiter(b'\t')
@@ -77,8 +80,8 @@ impl Dictionary {
         })
     }
 
-    fn lookup_entry<'a>(&'a self, entry: &str) -> Option<Option<&'a DictEntry<String>>> {
-        let (first_entry, dict_entry): (&String, &DictEntry<String>) = self
+    fn lookup_entry<'a>(&'a self, entry: &str) -> Option<Option<&'a Vec<DictEntry<String>>>> {
+        let (first_entry, dict_entry): (&String, &Vec<DictEntry<String>>) = self
             .entries
             .range(RangeFrom {
                 start: entry.to_string(),
@@ -100,6 +103,7 @@ impl Dictionary {
         string_inits(text)
             .map_while(|entry| self.lookup_entry(entry))
             .filter_map(|x| std::convert::identity(x))
+            .flatten()
     }
 
     // 十分钟
@@ -284,7 +288,7 @@ mod tests {
 
     use cedict::DictEntry;
 
-    use super::Dictionary;
+    use super::{Dictionary, DICTIONARY};
 
     #[test]
     fn string_inits_sanity() {
@@ -309,6 +313,18 @@ mod tests {
     //         vec!["你好吗", "好吗", "吗"]
     //     );
     // }
+
+    // 会 should return both hui4 and kuai4
+    #[test]
+    fn multiple_entries() {
+        assert_eq!(
+            DICTIONARY
+                .lookup_entries("会")
+                .map(|entry| entry.pinyin().to_string())
+                .collect::<Vec<String>>(),
+            &["hui4", "kuai4"]
+        );
+    }
 
     #[track_caller]
     fn assert_segment_step(text: &str, expected: &str) {
