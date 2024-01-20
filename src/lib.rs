@@ -42,6 +42,7 @@ impl Dictionary {
             entries: cedict::parse_reader(Cursor::new(DEFAULT_DICT))
                 // Filter out non-chinese entries.
                 .filter(|entry| !entry.simplified().chars().all(|c| c.is_ascii()))
+                .sorted_by(|a, b| a.simplified().cmp(&b.simplified()))
                 .group_by(|entry| entry.simplified().to_string())
                 .into_iter()
                 .map(|(key, entries)| (key, entries.collect()))
@@ -326,6 +327,18 @@ mod tests {
         );
     }
 
+    // 了 has multi entries spread over multiple lines
+    #[test]
+    fn entries_for_le_liao() {
+        assert_eq!(
+            DICTIONARY
+                .lookup_entries("了")
+                .map(|entry| entry.pinyin().to_string())
+                .collect::<Vec<String>>(),
+            &["le5", "liao3", "liao3", "liao4"]
+        );
+    }
+
     #[track_caller]
     fn assert_segment_step(text: &str, expected: &str) {
         static DICT: OnceLock<Dictionary> = OnceLock::new();
@@ -335,7 +348,10 @@ mod tests {
                 .into_iter()
                 .map(DictEntry::simplified)
                 .collect::<Vec<_>>(),
-            expected.split(' ').collect::<Vec<_>>()
+            expected
+                .split(' ')
+                .filter(|str| !str.is_empty())
+                .collect::<Vec<_>>()
         );
     }
 
@@ -460,7 +476,7 @@ mod tests {
     #[test]
     fn default_dict_is_valid() {
         let dict = Dictionary::new();
-        assert_eq!(dict.entries.len(), 118508);
+        assert_eq!(dict.entries.len(), 118473);
     }
 
     #[test]
