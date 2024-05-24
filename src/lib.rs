@@ -198,10 +198,6 @@ impl<'a> Fragments<'a> {
             return None;
         }
 
-        for fragment in fragments {
-            dbg!(&fragment.words, fragment.score());
-        }
-
         fragments
             .iter()
             .max_by(|a, b| a.score().total_cmp(&b.score()))
