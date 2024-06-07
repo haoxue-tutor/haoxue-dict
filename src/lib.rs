@@ -8,7 +8,7 @@ use std::{
     ops::RangeFrom,
 };
 
-static DEFAULT_DICT: &str = include_str!("../data/cedict-2024-02-17.txt");
+static DEFAULT_DICT: &str = include_str!("../data/cedict-2024-06-07.txt");
 static DEFAULT_WF: &str = include_str!("../data/SUBTLEX-CH-WF.utf8.txt");
 
 static SEGMENTATION_EXCEPTIONS: &[&[&str]] = &[
