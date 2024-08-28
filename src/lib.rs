@@ -50,7 +50,7 @@ impl Dictionary {
             entries: cedict::parse_reader(dict_reader)
                 .filter(|entry| !entry.simplified().chars().all(|c| c.is_ascii()))
                 .sorted_by(|a, b| a.simplified().cmp(&b.simplified()))
-                .group_by(|entry| entry.simplified().to_string())
+                .chunk_by(|entry| entry.simplified().to_string())
                 .into_iter()
                 .map(|(key, entries)| (key, entries.collect()))
                 .collect(),
