@@ -8,7 +8,10 @@ use std::{
     ops::RangeFrom,
 };
 
+#[cfg(feature = "embed-dict")]
 static DEFAULT_DICT: &str = include_str!("../data/cedict-2024-06-07.txt");
+
+#[cfg(feature = "embed-dict")]
 static DEFAULT_WF: &str = include_str!("../data/SUBTLEX-CH-WF.utf8.txt");
 
 static SEGMENTATION_EXCEPTIONS: &[&[&str]] = &[
@@ -37,10 +40,14 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
+    #[cfg(feature = "embed-dict")]
     pub fn new() -> Self {
+        Self::new_from_reader(Cursor::new(DEFAULT_DICT), Cursor::new(DEFAULT_WF))
+    }
+
+    pub fn new_from_reader<R: std::io::Read>(dict_reader: R, wf_reader: R) -> Self {
         Dictionary {
-            entries: cedict::parse_reader(Cursor::new(DEFAULT_DICT))
-                // Filter out non-chinese entries.
+            entries: cedict::parse_reader(dict_reader)
                 .filter(|entry| !entry.simplified().chars().all(|c| c.is_ascii()))
                 .sorted_by(|a, b| a.simplified().cmp(&b.simplified()))
                 .group_by(|entry| entry.simplified().to_string())
@@ -50,7 +57,7 @@ impl Dictionary {
             word_frequency: csv::ReaderBuilder::new()
                 .delimiter(b'\t')
                 .has_headers(true)
-                .from_reader(Cursor::new(DEFAULT_WF))
+                .from_reader(wf_reader)
                 .deserialize()
                 .map(|x| x.unwrap())
                 .map(
