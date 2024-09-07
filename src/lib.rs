@@ -2,10 +2,12 @@
 pub use cedict::DictEntry;
 use either::Either;
 use itertools::Itertools;
+#[cfg(feature = "embed-dict")]
 use once_cell::sync::Lazy;
+#[cfg(feature = "embed-dict")]
+use std::io::Cursor;
 use std::{
     collections::{BTreeMap, HashMap},
-    io::Cursor,
     ops::RangeFrom,
 };
 
@@ -33,6 +35,7 @@ static SEGMENTATION_EXCEPTIONS: &[&[&str]] = &[
     &["的", "话"],
 ];
 
+#[cfg(feature = "embed-dict")]
 /// Built-in dictionary. Requires the `embed-dict` feature.
 pub static DICTIONARY: Lazy<Dictionary> = Lazy::new(Dictionary::new);
 
@@ -419,12 +422,18 @@ fn string_inits(str: &str) -> impl Iterator<Item = &str> {
 // A B C
 
 #[cfg(test)]
-mod tests {
-    use std::{convert::identity, sync::OnceLock};
-
-    use cedict::DictEntry;
-
-    use super::{Dictionary, DICTIONARY};
+mod plain_tests {
+    // #[test]
+    // fn string_tails_sanity() {
+    //     assert_eq!(
+    //         super::string_tails("ABC").collect::<Vec<&str>>(),
+    //         vec!["ABC", "BC", "C"]
+    //     );
+    //     assert_eq!(
+    //         super::string_tails("你好吗").collect::<Vec<&str>>(),
+    //         vec!["你好吗", "好吗", "吗"]
+    //     );
+    // }
 
     #[test]
     fn string_inits_sanity() {
@@ -437,18 +446,11 @@ mod tests {
             vec!["你", "你好", "你好吗"]
         );
     }
+}
 
-    // #[test]
-    // fn string_tails_sanity() {
-    //     assert_eq!(
-    //         super::string_tails("ABC").collect::<Vec<&str>>(),
-    //         vec!["ABC", "BC", "C"]
-    //     );
-    //     assert_eq!(
-    //         super::string_tails("你好吗").collect::<Vec<&str>>(),
-    //         vec!["你好吗", "好吗", "吗"]
-    //     );
-    // }
+#[cfg(all(test, feature = "embed-dict"))]
+mod dictionary_tests {
+    use super::{DictEntry, DICTIONARY};
 
     // 会 should return both hui4 and kuai4
     #[test]
@@ -476,10 +478,9 @@ mod tests {
 
     #[track_caller]
     fn assert_segment_step(text: &str, expected: &str) {
-        static DICT: OnceLock<Dictionary> = OnceLock::new();
-        let dict = DICT.get_or_init(Dictionary::new);
         assert_eq!(
-            dict.segment_step(text)
+            DICTIONARY
+                .segment_step(text)
                 .into_iter()
                 .map(DictEntry::simplified)
                 .collect::<Vec<_>>(),
@@ -492,12 +493,11 @@ mod tests {
 
     #[track_caller]
     fn assert_segment(text: &str, expected: &str) {
-        static DICT: OnceLock<Dictionary> = OnceLock::new();
-        let dict = DICT.get_or_init(Dictionary::new);
         assert_eq!(
-            dict.segment(text)
+            DICTIONARY
+                .segment(text)
                 .into_iter()
-                .map(|ret| ret.either(DictEntry::simplified, identity))
+                .map(|ret| ret.right_or_else(DictEntry::simplified))
                 .collect::<Vec<_>>(),
             expected.split(' ').collect::<Vec<_>>()
         );
@@ -610,21 +610,19 @@ mod tests {
 
     #[test]
     fn default_dict_is_valid() {
-        let dict = Dictionary::new();
-        assert_eq!(dict.entries.len(), 119002);
+        assert_eq!(DICTIONARY.entries.len(), 119002);
     }
 
     #[test]
     fn default_wf_is_valid() {
-        let dict = Dictionary::new();
-        assert_eq!(dict.word_frequency.len(), 99121);
+        assert_eq!(DICTIONARY.word_frequency.len(), 99121);
     }
 
     #[test]
     fn multi_lookup() {
-        let dict = Dictionary::new();
         assert_eq!(
-            dict.lookup_entries("一个人")
+            DICTIONARY
+                .lookup_entries("一个人")
                 .map(DictEntry::simplified)
                 .map(str::to_string)
                 .collect::<Vec<String>>(),
