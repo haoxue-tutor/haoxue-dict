@@ -1,4 +1,5 @@
-use cedict::DictEntry;
+#![doc = include_str!("../README.md")]
+pub use cedict::DictEntry;
 use either::Either;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
@@ -32,8 +33,10 @@ static SEGMENTATION_EXCEPTIONS: &[&[&str]] = &[
     &["的", "话"],
 ];
 
+/// Built-in dictionary. Requires the `embed-dict` feature.
 pub static DICTIONARY: Lazy<Dictionary> = Lazy::new(Dictionary::new);
 
+/// A Chinese dictionary and word segmenter.
 pub struct Dictionary {
     entries: BTreeMap<String, Vec<DictEntry<String>>>,
     word_frequency: HashMap<String, f64>,
@@ -45,6 +48,11 @@ impl Dictionary {
         Self::new_from_reader(Cursor::new(DEFAULT_DICT), Cursor::new(DEFAULT_WF))
     }
 
+    /// Create a new dictionary from readers. The dictionary file must follow the
+    /// [cedict](https://en.wikipedia.org/wiki/CEDICT) format. The word frequency
+    /// file must be a CSV with columns `word`, `wcount`, `wmillion`, `logw`,
+    /// `wcd`, `wcdp`, `logwcd`. See
+    /// [SUBTLEX-CH-WF](https://www.ugent.be/pp/experimentele-psychologie/en/research/documents/subtlexch).
     pub fn new_from_reader<R: std::io::Read>(dict_reader: R, wf_reader: R) -> Self {
         Dictionary {
             entries: cedict::parse_reader(dict_reader)
@@ -75,6 +83,26 @@ impl Dictionary {
         }
     }
 
+    /// Get the `log(frequency)` of a word. If a word isn't in the frequency
+    /// table, the frequency is estimated as the geometric mean of the
+    /// frequencies of the component characters.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use haoxue_dict::DICTIONARY;
+    /// #
+    /// // 'University' has a lower frequency than 'I'
+    /// assert!(DICTIONARY.frequency("大学") < DICTIONARY.frequency("们"));
+    /// ```
+    ///
+    /// ```rust
+    /// # use haoxue_dict::DICTIONARY;
+    /// #
+    /// // 'Senator' has a lower frequency than 'I'
+    /// assert_eq!(DICTIONARY.frequency("我"), 6.2259_f64);
+    /// assert_eq!(DICTIONARY.frequency("参议员"), 2.9154_f64);
+    /// ```
     pub fn frequency(&self, word: &str) -> f64 {
         self.word_frequency.get(word).copied().unwrap_or_else(|| {
             word.chars()
@@ -104,6 +132,46 @@ impl Dictionary {
         }
     }
 
+    /// Lookup possible words that match the given text. Since Chinese doesn't
+    /// separate words with spaces, it is ambiguous how to segment a text. This
+    /// function returns all possible dictionary entries for the given text.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use haoxue_dict::DICTIONARY;
+    /// #
+    /// let mut entries = DICTIONARY.lookup_entries("好久不见");
+    /// assert_eq!(entries.next().unwrap().simplified(), "好"); // hǎo variant
+    /// assert_eq!(entries.next().unwrap().simplified(), "好"); // hào variant
+    /// assert_eq!(entries.next().unwrap().simplified(), "好久");
+    /// assert_eq!(entries.next().unwrap().simplified(), "好久不见");
+    /// assert!(entries.next().is_none());
+    /// ```
+    ///
+    /// ```rust
+    /// # use haoxue_dict::DICTIONARY;
+    /// #
+    /// let mut entries = DICTIONARY.lookup_entries("你好吗？");
+    /// assert_eq!(entries.next().unwrap().simplified(), "你");
+    /// assert_eq!(entries.next().unwrap().simplified(), "你"); // Taiwan variant
+    /// assert_eq!(entries.next().unwrap().simplified(), "你好");
+    /// assert!(entries.next().is_none());
+    /// ```
+    ///
+    /// ```rust
+    /// # use haoxue_dict::DICTIONARY;
+    /// #
+    /// let mut entries = DICTIONARY.lookup_entries("");
+    /// assert!(entries.next().is_none());
+    /// ```
+    ///
+    /// ```rust
+    /// # use haoxue_dict::DICTIONARY;
+    /// #
+    /// let mut entries = DICTIONARY.lookup_entries("English!");
+    /// assert!(entries.next().is_none());
+    /// ```
     pub fn lookup_entries<'a: 'b, 'b>(
         &'a self,
         text: &'b str,
@@ -112,6 +180,19 @@ impl Dictionary {
             .map_while(|entry| self.lookup_entry(entry))
             .filter_map(|x| std::convert::identity(x))
             .flatten()
+    }
+
+    /// Get the first entry for a word.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use haoxue_dict::DICTIONARY;
+    /// #
+    /// assert_eq!(DICTIONARY.get_entry("参议员").unwrap().definitions().next(), Some("senator"));
+    /// ```
+    pub fn get_entry(&self, text: &str) -> Option<&DictEntry<String>> {
+        self.lookup_entry(text)??.first()
     }
 
     // 十分钟
@@ -152,6 +233,57 @@ impl Dictionary {
         }
     }
 
+    /// Segment a text into words and non-Chinese characters. This function uses
+    /// word-frequencies and heuristics to pick the best segmentation. It's not
+    /// 100% accurate, and it changes often. Do not rely on the output being
+    /// stable.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use haoxue_dict::{DICTIONARY, DictEntry};
+    /// # use either::Either;
+    /// let mut segments = DICTIONARY.segment("我是大学生。")
+    ///                      .iter()
+    ///                      .map(|x| x.map_left(DictEntry::simplified))
+    ///                      .collect::<Vec<_>>();
+    /// assert_eq!(segments, vec![ Either::Left("我")
+    ///                          , Either::Left("是")
+    ///                          , Either::Left("大学生")
+    ///                          , Either::Right("。")
+    ///                          ]);
+    /// ```
+    ///
+    /// ```rust
+    /// # use haoxue_dict::{DICTIONARY, DictEntry};
+    /// # use either::Either;
+    /// let mut segments = DICTIONARY.segment("十分钟")
+    ///                      .iter()
+    ///                      .map(|x| x.map_left(DictEntry::simplified))
+    ///                      .collect::<Vec<_>>();
+    /// assert_eq!(segments, vec![ Either::Left("十")
+    ///                          , Either::Left("分钟")
+    ///                          ]);
+    ///
+    /// let mut segments = DICTIONARY.segment("十分")
+    ///                      .iter()
+    ///                      .map(|x| x.map_left(DictEntry::simplified))
+    ///                      .collect::<Vec<_>>();
+    /// assert_eq!(segments, vec![ Either::Left("十分")]);
+    /// ```
+    ///
+    /// ```rust
+    /// # use haoxue_dict::{DICTIONARY, DictEntry};
+    /// # use either::Either;
+    /// let mut segments = DICTIONARY.segment("我叫Lemmih。")
+    ///                      .iter()
+    ///                      .map(|x| x.map_left(DictEntry::simplified))
+    ///                      .collect::<Vec<_>>();
+    /// assert_eq!(segments, vec![ Either::Left("我")
+    ///                          , Either::Left("叫")
+    ///                          , Either::Right("Lemmih。")
+    ///                          ]);
+    /// ```
     pub fn segment<'a, 'b>(&'a self, text: &'b str) -> Vec<Either<&'a DictEntry<String>, &'b str>> {
         let mut non_chinese_start = 0;
         let mut result = vec![];
